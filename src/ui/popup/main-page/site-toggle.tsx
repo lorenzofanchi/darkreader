@@ -3,8 +3,8 @@ import {m} from 'malevic';
 import type {ViewProps} from '../../../definitions';
 import {getLocalMessage} from '../../../utils/locales';
 import {isChromium} from '../../../utils/platform';
-import {isURLEnabled, isPDF, isLocalFile} from '../../../utils/url';
-import {ControlGroup} from '../../controls';
+import {isURLEnabled, isPDF, isLocalFile, isURLInList, getToggledSiteList, getURLHostOrProtocol} from '../../../utils/url';
+import {CheckButton, ControlGroup} from '../../controls';
 import SiteToggle from '../components/site-toggle';
 
 export default function SiteToggleGroup(props: ViewProps) {
@@ -40,14 +40,32 @@ export default function SiteToggleGroup(props: ViewProps) {
         >{descriptionText}</span>
     );
 
+    const isAlwaysDark = isURLInList(tab.url, props.data.settings.alwaysDarkFor);
+
+    // Always shown, even with automation off: it is normal to mark sites before turning
+    // automation on, and a control that hides itself is a control nobody finds.
+    const alwaysDarkButton = (
+        <CheckButton
+            checked={isAlwaysDark}
+            label={getLocalMessage('always_dark')}
+            description={getLocalMessage('always_dark_description')}
+            onChange={() => props.actions.changeSettings({
+                alwaysDarkFor: getToggledSiteList(props.data.settings.alwaysDarkFor, getURLHostOrProtocol(tab.url)),
+            })}
+        />
+    );
+
     return (
-        <ControlGroup class="site-toggle-group">
-            <ControlGroup.Control class="site-toggle-group__control">
-                <SiteToggle {...props} />
-            </ControlGroup.Control>
-            <ControlGroup.Description>
-                {description}
-            </ControlGroup.Description>
-        </ControlGroup>
+        <Array>
+            <ControlGroup class="site-toggle-group">
+                <ControlGroup.Control class="site-toggle-group__control">
+                    <SiteToggle {...props} />
+                </ControlGroup.Control>
+                <ControlGroup.Description>
+                    {description}
+                </ControlGroup.Description>
+            </ControlGroup>
+            {alwaysDarkButton}
+        </Array>
     );
 }

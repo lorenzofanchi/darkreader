@@ -232,13 +232,16 @@ export default class UserStorage {
             });
         };
 
-        const {enabledFor, disabledFor} = $settings;
+        const {enabledFor, disabledFor, alwaysDarkFor} = $settings;
         const updatedSettings = {...UserStorage.settings, ...$settings};
         if (enabledFor) {
             updatedSettings.enabledFor = filterSiteList(enabledFor);
         }
         if (disabledFor) {
             updatedSettings.disabledFor = filterSiteList(disabledFor);
+        }
+        if (alwaysDarkFor) {
+            updatedSettings.alwaysDarkFor = filterSiteList(alwaysDarkFor);
         }
 
         UserStorage.settings = updatedSettings;

@@ -85,6 +85,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
     enabledByDefault: true,
     enabledFor: [],
     disabledFor: [],
+    alwaysDarkFor: [],
     changeBrowserTheme: false,
     syncSettings: true,
     syncSitesFixes: false,

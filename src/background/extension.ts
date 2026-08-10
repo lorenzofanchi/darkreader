@@ -14,7 +14,7 @@ import {PromiseBarrier} from '../utils/promise-barrier';
 import {StateManager} from '../utils/state-manager';
 import {getActiveTab} from '../utils/tabs';
 import {isInTimeIntervalLocal, nextTimeInterval, isNightAtLocation, nextTimeChangeAtLocation, getDuration} from '../utils/time';
-import {isURLInList, getURLHostOrProtocol, isURLEnabled, isPDF} from '../utils/url';
+import {isURLInList, getURLHostOrProtocol, isURLEnabled, isPDF, getToggledSiteList} from '../utils/url';
 
 import ConfigManager from './config-manager';
 import DevTools from './devtools';
@@ -580,22 +580,7 @@ export class Extension {
         const isInDarkList = ConfigManager.isURLInDarkList(url);
         const host = getURLHostOrProtocol(url);
 
-        function getToggledList(sourceList: string[]) {
-            const list = sourceList.slice();
-
-            let index = list.indexOf(host);
-            if (index < 0 && host.startsWith('www.')) {
-                const noWwwHost = host.substring(4);
-                index = list.indexOf(noWwwHost);
-            }
-
-            if (index < 0) {
-                list.push(host);
-            } else {
-                list.splice(index, 1);
-            }
-            return list;
-        }
+        const getToggledList = (sourceList: string[]) => getToggledSiteList(sourceList, host);
 
         const darkThemeDetected = settings.enabledByDefault && settings.detectDarkTheme && tab.isDarkThemeDetected;
         if (!settings.enabledByDefault || isInDarkList || darkThemeDetected) {
@@ -688,11 +673,16 @@ export class Extension {
     private static getTabMessage = (tabURL: string, url: string, isTopFrame: boolean, topFrameHasDarkTheme?: boolean): TabData => {
         const settings = UserStorage.settings;
         const tabInfo = Extension.getTabInfo(tabURL);
-        if (Extension.isExtensionSwitchedOn() && isURLEnabled(tabURL, settings, tabInfo) && !topFrameHasDarkTheme) {
+        // Gated on `automation.enabled` so the master switch stays a real kill switch:
+        // toggling the extension off also turns automation off, making this inert.
+        const alwaysDark = settings.automation.enabled && isURLInList(tabURL, settings.alwaysDarkFor);
+        if ((Extension.isExtensionSwitchedOn() || alwaysDark) && isURLEnabled(tabURL, settings, tabInfo) && !topFrameHasDarkTheme) {
             const custom = settings.customThemes.find(({url: urlList}) => isURLInList(tabURL, urlList));
             const preset = custom ? null : settings.presets.find(({urls}) => isURLInList(tabURL, urls));
             let theme = custom ? custom.theme : preset ? preset.theme : settings.theme;
-            if (Extension.autoState === 'scheme-dark' || Extension.autoState === 'scheme-light') {
+            if (alwaysDark) {
+                theme = {...theme, mode: 1};
+            } else if (Extension.autoState === 'scheme-dark' || Extension.autoState === 'scheme-light') {
                 const mode = Extension.autoState === 'scheme-dark' ? 1 : 0;
                 theme = {...theme, mode};
             }

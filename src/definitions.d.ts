@@ -104,6 +104,8 @@ export interface UserSettings {
     enabledByDefault: boolean;
     enabledFor: string[];
     disabledFor: string[];
+    /** Rendered dark even while automation would turn dark mode off or force a light scheme. */
+    alwaysDarkFor: string[];
     changeBrowserTheme: boolean;
     syncSettings: boolean;
     syncSitesFixes: boolean;

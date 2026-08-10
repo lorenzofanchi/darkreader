@@ -21,7 +21,7 @@ export function ClearSiteList(props: ViewProps): Malevic.Child {
 
     function reset() {
         store.isDialogVisible = false;
-        props.actions.changeSettings({enabledFor: [], disabledFor: []});
+        props.actions.changeSettings({enabledFor: [], disabledFor: [], alwaysDarkFor: []});
     }
 
     const dialog = store.isDialogVisible ? (

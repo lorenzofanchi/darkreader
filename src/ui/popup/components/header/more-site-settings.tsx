@@ -3,6 +3,7 @@ import {m} from 'malevic';
 import type {ExtWrapper} from '../../../../definitions';
 import {DONATE_URL} from '../../../../utils/links';
 import {getLocalMessage} from '../../../../utils/locales';
+import {getToggledSiteList, getURLHostOrProtocol, isURLInList} from '../../../../utils/url';
 import {Button, CheckBox, Shortcut} from '../../../controls';
 import {KeyboardIcon} from '../../../icons';
 
@@ -18,6 +19,13 @@ export default function MoreSiteSettings({data, actions, isExpanded, onClose}: M
 
     function toggleDetectDarkTheme() {
         actions.changeSettings({detectDarkTheme: !data.settings.detectDarkTheme});
+    }
+
+    const host = getURLHostOrProtocol(data.activeTab.url);
+    const isAlwaysDark = isURLInList(data.activeTab.url, data.settings.alwaysDarkFor);
+
+    function toggleAlwaysDark() {
+        actions.changeSettings({alwaysDarkFor: getToggledSiteList(data.settings.alwaysDarkFor, host)});
     }
 
     return (
@@ -75,6 +83,27 @@ export default function MoreSiteSettings({data, actions, isExpanded, onClose}: M
                 </div>
                 <p class="header__more-settings__description">
                     {getLocalMessage('detect_website_dark_theme')}
+                </p>
+                <div class={[
+                    'header__more-settings__line',
+                    'header__more-settings__always-dark',
+                ]}
+                >
+                    <CheckBox
+                        class="header__more-settings__always-dark__checkbox"
+                        checked={isAlwaysDark}
+                        onchange={toggleAlwaysDark}
+                    />
+                    <Button
+                        class={{
+                            'header__more-settings__always-dark__button': true,
+                            'header__more-settings__always-dark__button--active': isAlwaysDark,
+                        }}
+                        onclick={toggleAlwaysDark}
+                    >{getLocalMessage('always_dark')}</Button>
+                </div>
+                <p class="header__more-settings__description">
+                    {getLocalMessage('always_dark_description')}
                 </p>
                 <span
                     class={{
