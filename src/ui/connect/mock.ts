@@ -28,6 +28,7 @@ export function getMockData(override = {} as Partial<ExtensionData>): ExtensionD
             customThemes: [],
             enabledFor: [],
             disabledFor: [],
+            alwaysDarkFor: [],
             syncSitesFixes: false,
             enableContextMenus: false,
             enabledByDefault: true,

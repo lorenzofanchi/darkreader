@@ -98,6 +98,7 @@ test('Settings Validation', () => {
             null,
         ],
         disabledFor: ['a.com', '', 'b.com'],
+        alwaysDarkFor: ['c.com', 3, 'd.com'],
         enabledFor: {0: 'a.com', 1: 'b.com'},
         enabledByDefault: true,
         changeBrowserTheme: 1,
@@ -128,6 +129,7 @@ test('Settings Validation', () => {
     expect(wonkySet as any).toEqual({
         ...DEFAULT_SETTINGS,
         disabledFor: ['a.com', 'b.com'],
+        alwaysDarkFor: ['c.com', 'd.com'],
         presets: [{id: 'p5', name: 'P5', urls: ['a.com'], theme: {brightness: 100}}],
         customThemes: [{url: ['a.com'], theme: {brightness: 100}}],
     });
@@ -183,6 +185,7 @@ test('Settings Validation', () => {
         ],
         disabledFor: ['a.com', 'b.com'],
         enabledFor: ['c.com'],
+        alwaysDarkFor: ['d.com'],
         enabledByDefault: false,
         changeBrowserTheme: true,
         syncSettings: false,

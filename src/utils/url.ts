@@ -355,6 +355,10 @@ export function isURLEnabled(url: string, userSettings: UserSettings, {isProtect
     if (isPDF(url)) {
         return userSettings.enableForPDF;
     }
+    // An explicit "always dark" wins over both site lists and the dark-list heuristic.
+    if (isInListOptimized(url, userSettings.alwaysDarkFor)) {
+        return true;
+    }
     const isURLInDisabledList = isInListOptimized(url, userSettings.disabledFor);
     const isURLInEnabledList = isInListOptimized(url, userSettings.enabledFor);
 
@@ -368,6 +372,23 @@ export function isURLEnabled(url: string, userSettings: UserSettings, {isProtect
         return false;
     }
     return !isURLInDisabledList;
+}
+
+/** Adds `host` to `sourceList`, or removes it (and its `www.`-less form) if already there. */
+export function getToggledSiteList(sourceList: string[], host: string): string[] {
+    const list = sourceList.slice();
+
+    let index = list.indexOf(host);
+    if (index < 0 && host.startsWith('www.')) {
+        index = list.indexOf(host.substring(4));
+    }
+
+    if (index < 0) {
+        list.push(host);
+    } else {
+        list.splice(index, 1);
+    }
+    return list;
 }
 
 export function isLocalFile(url: string): boolean {

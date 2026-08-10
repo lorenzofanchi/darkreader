@@ -140,6 +140,8 @@ export function validateSettings(settings: Partial<UserSettings>): SettingValida
     validateArray(settings, 'enabledFor', isNonEmptyString);
     validateProperty(settings, 'disabledFor', isArray, DEFAULT_SETTINGS);
     validateArray(settings, 'disabledFor', isNonEmptyString);
+    validateProperty(settings, 'alwaysDarkFor', isArray, DEFAULT_SETTINGS);
+    validateArray(settings, 'alwaysDarkFor', isNonEmptyString);
 
     validateProperty(settings, 'enabledByDefault', isBoolean, DEFAULT_SETTINGS);
     validateProperty(settings, 'changeBrowserTheme', isBoolean, DEFAULT_SETTINGS);

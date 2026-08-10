@@ -29,6 +29,11 @@ export function SiteListTab(props: ViewProps): Malevic.Child {
             siteList={sites}
             onChange={onSiteListChange}
         />
+        <label class="site-list-tab__label">Always use dark mode on these websites</label>
+        <SiteList
+            siteList={settings.alwaysDarkFor}
+            onChange={(alwaysDarkFor) => props.actions.changeSettings({alwaysDarkFor})}
+        />
         <ClearSiteList {...props} />
     </div>;
 }

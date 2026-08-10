@@ -126,7 +126,11 @@ footer {
         opacity: 1;
     }
 
-    .header__site-toggle,
+    // Dim the toggle itself rather than the whole group: the gear next to it opens the site
+    // settings panel, which stays usable with the extension off (e.g. to mark a site as
+    // always dark). The panel is a sibling of the header, so only its opener was blocked.
+    // The app-toggle gear is already reachable when off; this makes the pair consistent.
+    .header__site-toggle > .site-toggle,
     .tab-panel {
         opacity: 0.5;
         pointer-events: none;

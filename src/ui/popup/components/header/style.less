@@ -93,7 +93,9 @@
     }
 
     &__more-site-settings {
-        height: 14.5rem;
+        // Fixed height with `overflow: hidden` on the content, so it must grow by exactly one
+        // settings block when one is added: the line itself plus the indent above it.
+        height: 14.5rem + @indent-small + @more-settings-line-height;
     }
 
     &__more-toggle-settings {
@@ -325,6 +327,30 @@
         }
 
         &__detect-dark-theme {
+            display: flex;
+            flex-direction: row;
+            margin-top: @indent-small;
+
+            &__checkbox {
+                flex: none;
+            }
+
+            &__button {
+                border-left-width: @size-border-inner;
+                flex: auto;
+
+                &:not(&--active) {
+                    color: @color-input-fore;
+                }
+            }
+
+            &:hover &__button,
+            &:hover &__checkbox {
+                background-color: @color-control-hover;
+            }
+        }
+
+        &__always-dark {
             display: flex;
             flex-direction: row;
             margin-top: @indent-small;

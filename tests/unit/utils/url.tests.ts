@@ -1,4 +1,44 @@
-import {indexURLTemplateList, isPDF, isURLInIndexedList, isURLMatched} from '../../../src/utils/url';
+import {DEFAULT_SETTINGS} from '../../../src/defaults';
+import {getToggledSiteList, indexURLTemplateList, isPDF, isURLEnabled, isURLInIndexedList, isURLMatched} from '../../../src/utils/url';
+
+describe('Always dark site list', () => {
+    const settings = (overrides: Partial<typeof DEFAULT_SETTINGS>) => ({...DEFAULT_SETTINGS, ...overrides});
+    const url = 'https://www.example.com/page';
+
+    test('beats disabledFor', () => {
+        expect(isURLEnabled(url, settings({disabledFor: ['example.com']}), {})).toEqual(false);
+        expect(isURLEnabled(url, settings({disabledFor: ['example.com'], alwaysDarkFor: ['example.com']}), {})).toEqual(true);
+    });
+
+    test('beats allowlist mode', () => {
+        expect(isURLEnabled(url, settings({enabledByDefault: false}), {})).toEqual(false);
+        expect(isURLEnabled(url, settings({enabledByDefault: false, alwaysDarkFor: ['example.com']}), {})).toEqual(true);
+    });
+
+    test('beats the dark list and dark theme detection', () => {
+        expect(isURLEnabled(url, settings({}), {isInDarkList: true})).toEqual(false);
+        expect(isURLEnabled(url, settings({alwaysDarkFor: ['example.com']}), {isInDarkList: true})).toEqual(true);
+        expect(isURLEnabled(url, settings({detectDarkTheme: true, alwaysDarkFor: ['example.com']}), {isDarkThemeDetected: true})).toEqual(true);
+    });
+
+    test('does not override protected pages or PDF settings', () => {
+        expect(isURLEnabled(url, settings({alwaysDarkFor: ['example.com']}), {isProtected: true})).toEqual(false);
+        expect(isURLEnabled('https://example.com/a.pdf', settings({enableForPDF: false, alwaysDarkFor: ['example.com']}), {})).toEqual(false);
+    });
+
+    test('leaves unlisted sites alone', () => {
+        expect(isURLEnabled(url, settings({alwaysDarkFor: ['other.com']}), {})).toEqual(true);
+        expect(isURLEnabled(url, settings({enabledByDefault: false, alwaysDarkFor: ['other.com']}), {})).toEqual(false);
+    });
+
+    test('toggling a host adds, then removes it', () => {
+        expect(getToggledSiteList([], 'www.example.com')).toEqual(['www.example.com']);
+        expect(getToggledSiteList(['www.example.com'], 'www.example.com')).toEqual([]);
+        // A bare host already in the list is matched by its www. form.
+        expect(getToggledSiteList(['example.com'], 'www.example.com')).toEqual([]);
+        expect(getToggledSiteList(['other.com'], 'www.example.com')).toEqual(['other.com', 'www.example.com']);
+    });
+});
 
 describe('Domain utilities', () => {
     test('URL match', () => {
