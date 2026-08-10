@@ -14,6 +14,7 @@ import {PromiseBarrier} from '../utils/promise-barrier';
 import {StateManager} from '../utils/state-manager';
 import {getActiveTab} from '../utils/tabs';
 import {isInTimeIntervalLocal, nextTimeInterval, isNightAtLocation, nextTimeChangeAtLocation, getDuration} from '../utils/time';
+import {getTimeZoneLocationUpdate} from '../utils/timezone';
 import {isURLInList, getURLHostOrProtocol, isURLEnabled, isPDF} from '../utils/url';
 
 import ConfigManager from './config-manager';
@@ -178,6 +179,14 @@ export class Extension {
                 }
                 break;
             case AutomationMode.LOCATION: {
+                // Follow the system time zone, so that travelling needs no input.
+                // Known limitation: an already-open popup keeps showing the previous
+                // coordinates until it is reopened.
+                const detected = getTimeZoneLocationUpdate(UserStorage.settings.location);
+                if (detected) {
+                    UserStorage.set({location: detected});
+                    UserStorage.saveSettings();
+                }
                 const {latitude, longitude} = UserStorage.settings.location;
                 if (latitude != null && longitude != null) {
                     isAutoDark = isNightAtLocation(latitude, longitude);

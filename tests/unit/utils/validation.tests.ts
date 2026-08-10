@@ -199,6 +199,7 @@ test('Settings Validation', () => {
         location: {
             latitude: 59,
             longitude: 53,
+            timeZone: null,
         },
         previewNewDesign: true,
         previewNewestDesign: false,

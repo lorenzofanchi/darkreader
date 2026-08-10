@@ -126,6 +126,8 @@ export interface TimeSettings {
 export interface LocationSettings {
     latitude: number | null;
     longitude: number | null;
+    /** Time zone the coordinates were detected from, `null` if the user typed them in. */
+    timeZone: string | null;
 }
 
 export interface TabInfo {
