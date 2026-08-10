@@ -293,9 +293,13 @@ export default class TabManager {
             return;
         }
         if (__CHROMIUM_MV2__) {
-            chrome.tabs.sendMessage<MessageBGtoCS>(tabId, message, documentId ? {documentId} : {frameId});
+            // A registered frame can be gone by the time we send (closed, navigated, discarded),
+            // which Chromium rejects with "Receiving end does not exist".
+            chrome.tabs.sendMessage<MessageBGtoCS>(tabId, message, documentId ? {documentId} : {frameId}).catch(() => { /* noop */ });
             return;
         }
+        // Firefox/Thunderbird: callback-style `chrome.*` returns no promise, so there is
+        // no rejection to handle here.
         chrome.tabs.sendMessage<MessageBGtoCS>(tabId, message, {frameId});
     }
 
