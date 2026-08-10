@@ -35,6 +35,12 @@ export default function MoreToggleSettings({data, actions, isExpanded, onClose}:
         return `${location}°`;
     }
 
+    function showLocation(node: Element, value: number | null) {
+        if (node !== document.activeElement) {
+            (node as HTMLInputElement).value = getLocationString(value);
+        }
+    }
+
     function locationChanged(inputElement: HTMLInputElement, newValue: string, type: 'latitude' | 'longitude') {
         if (newValue.trim() === '') {
             inputElement.value = '';
@@ -43,6 +49,7 @@ export default function MoreToggleSettings({data, actions, isExpanded, onClose}:
                 location: {
                     ...locationSettings,
                     [type]: null,
+                    timeZone: null,
                 },
             });
 
@@ -69,6 +76,7 @@ export default function MoreToggleSettings({data, actions, isExpanded, onClose}:
             location: {
                 ...locationSettings,
                 [type]: num,
+                timeZone: null,
             },
         });
     }
@@ -113,7 +121,8 @@ export default function MoreToggleSettings({data, actions, isExpanded, onClose}:
                         class="header__more-settings__location__latitude"
                         placeholder={getLocalMessage('latitude')}
                         onchange={(e: {target: HTMLInputElement}) => locationChanged(e.target, e.target.value, 'latitude')}
-                        oncreate={(node) => (node as HTMLInputElement).value = getLocationString(locationSettings.latitude)}
+                        oncreate={(node) => showLocation(node, locationSettings.latitude)}
+                        onupdate={(node: Element) => showLocation(node, locationSettings.latitude)}
                         onkeypress={(e: KeyboardEvent) => {
                             if (e.key === 'Enter') {
                                 (e.target as HTMLInputElement).blur();
@@ -124,7 +133,8 @@ export default function MoreToggleSettings({data, actions, isExpanded, onClose}:
                         class="header__more-settings__location__longitude"
                         placeholder={getLocalMessage('longitude')}
                         onchange={(e) => locationChanged(e.target, e.target.value, 'longitude')}
-                        oncreate={(node) => (node as HTMLInputElement).value = getLocationString(locationSettings.longitude)}
+                        oncreate={(node) => showLocation(node, locationSettings.longitude)}
+                        onupdate={(node: Element) => showLocation(node, locationSettings.longitude)}
                         onkeypress={(e) => {
                             if (e.key === 'Enter') {
                                 (e.target as HTMLInputElement).blur();
@@ -134,6 +144,9 @@ export default function MoreToggleSettings({data, actions, isExpanded, onClose}:
                 </div>
                 <p class="header__more-settings__location-description">
                     {getLocalMessage('set_location')}
+                    {locationSettings.timeZone ?
+                        [<br />, `${getLocalMessage('location_from_time_zone')} (${locationSettings.timeZone})`]
+                        : null}
                 </p>
                 <div class={[
                     'header__more-settings__line',

@@ -31,6 +31,12 @@ export function AutomationTab(props: ViewProps): Malevic.Child {
         return `${location}°`;
     }
 
+    function showLocation(node: Element, value: number | null) {
+        if (node !== document.activeElement) {
+            (node as HTMLInputElement).value = getLocationString(value!);
+        }
+    }
+
     function locationChanged(inputElement: HTMLInputElement, newValue: string, type: 'latitude' | 'longitude') {
         if (newValue.trim() === '') {
             inputElement.value = '';
@@ -39,6 +45,7 @@ export function AutomationTab(props: ViewProps): Malevic.Child {
                 location: {
                     ...locationSettings,
                     [type]: null,
+                    timeZone: null,
                 },
             });
 
@@ -65,6 +72,7 @@ export function AutomationTab(props: ViewProps): Malevic.Child {
             location: {
                 ...locationSettings,
                 [type]: num,
+                timeZone: null,
             },
         });
     }
@@ -104,7 +112,8 @@ export function AutomationTab(props: ViewProps): Malevic.Child {
                     class="automation__location-control__latitude"
                     placeholder={getLocalMessage('latitude')}
                     onchange={(e: {target: HTMLInputElement}) => locationChanged(e.target, e.target.value, 'latitude')}
-                    oncreate={(node) => (node as HTMLInputElement).value = getLocationString(locationSettings.latitude!)}
+                    oncreate={(node) => showLocation(node, locationSettings.latitude)}
+                    onupdate={(node: Element) => showLocation(node, locationSettings.latitude)}
                     onkeypress={(e) => {
                         if (e.key === 'Enter') {
                             (e.target as HTMLInputElement).blur();
@@ -115,7 +124,8 @@ export function AutomationTab(props: ViewProps): Malevic.Child {
                     class="automation__location-control__longitude"
                     placeholder={getLocalMessage('longitude')}
                     onchange={(e: {target: HTMLInputElement}) => locationChanged(e.target, e.target.value, 'longitude')}
-                    oncreate={(node) => (node as HTMLInputElement).value = getLocationString(locationSettings.longitude!)}
+                    oncreate={(node) => showLocation(node, locationSettings.longitude)}
+                    onupdate={(node: Element) => showLocation(node, locationSettings.longitude)}
                     onkeypress={(e) => {
                         if (e.key === 'Enter') {
                             (e.target as HTMLInputElement).blur();
@@ -125,6 +135,9 @@ export function AutomationTab(props: ViewProps): Malevic.Child {
             </ControlGroup.Control>
             <ControlGroup.Description>
                 {getLocalMessage('set_location')}
+                {locationSettings.timeZone ?
+                    [<br />, `${getLocalMessage('location_from_time_zone')} (${locationSettings.timeZone})`]
+                    : null}
             </ControlGroup.Description>
         </ControlGroup>
         <ControlGroup>

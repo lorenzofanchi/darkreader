@@ -49,6 +49,7 @@ export function getMockData(override = {} as Partial<ExtensionData>): ExtensionD
             location: {
                 latitude: 52.4237178,
                 longitude: 31.021786,
+                timeZone: null,
             },
             detectDarkTheme: false,
         } as UserSettings,

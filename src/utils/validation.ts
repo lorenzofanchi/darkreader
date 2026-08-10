@@ -175,6 +175,7 @@ export function validateSettings(settings: Partial<UserSettings>): SettingValida
         const isValidLoc = (x: any) => x === null || isNumber(x);
         locValidator.validateProperty(location, 'latitude', isValidLoc, location);
         locValidator.validateProperty(location, 'longitude', isValidLoc, location);
+        locValidator.validateProperty(location, 'timeZone', (x: any) => x === null || isString(x), location);
         return locValidator.errors.length === 0;
     }, DEFAULT_SETTINGS);
 
