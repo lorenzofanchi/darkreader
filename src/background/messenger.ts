@@ -158,10 +158,15 @@ export default class Messenger {
 
     static reportChanges(data: ExtensionData): void {
         if (Messenger.changeListenerCount > 0) {
-            chrome.runtime.sendMessage<MessageBGtoUI>({
+            // A UI page that closes abruptly never sends UNSUBSCRIBE_FROM_CHANGES, so the count
+            // outlives its listener and this send has no receiver. `Promise.resolve` normalizes
+            // Chromium (returns a promise) and Firefox (callback-style, returns undefined).
+            // ponytail: swallowing the rejection is enough; a port-based subscription would keep
+            // the count honest if a stale count ever costs more than a dropped message.
+            Promise.resolve(chrome.runtime.sendMessage<MessageBGtoUI>({
                 type: MessageTypeBGtoUI.CHANGES,
                 data,
-            });
+            })).catch(() => { /* noop */ });
         }
     }
 }
