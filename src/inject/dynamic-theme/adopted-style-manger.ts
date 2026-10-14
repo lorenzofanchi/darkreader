@@ -11,6 +11,7 @@ document.addEventListener('__darkreader__inlineScriptsAllowed', () => canUseShee
 
 const overrides = new WeakSet<CSSStyleSheet>();
 const overridesBySource = new WeakMap<CSSStyleSheet, CSSStyleSheet>();
+const drSheetCheckResults = new WeakMap<CSSStyleSheet, boolean>();
 
 export interface AdoptedStyleSheetManager {
     render(theme: Theme, ignoreImageAnalysis: string[]): void;
@@ -33,12 +34,26 @@ const createOverrideSheet: () => CSSStyleSheet = isFirefox ?
     } :
     () => new CSSStyleSheet();
 
+function isDarkReaderSheet(sheet: CSSStyleSheet): boolean {
+    let result = drSheetCheckResults.get(sheet);
+    if (result != null) {
+        return result;
+    }
+    result = Boolean(
+        sheet &&
+        sheet.cssRules.length > 0 &&
+        (sheet.cssRules[0] as CSSStyleRule).selectorText?.startsWith('#__darkreader'),
+    );
+    drSheetCheckResults.set(sheet, result);
+    return result;
+}
+
 export function createAdoptedStyleSheetOverride(node: Document | ShadowRoot): AdoptedStyleSheetManager {
     let cancelAsyncOperations = false;
 
     function iterateSourceSheets(iterator: (sheet: CSSStyleSheet) => void) {
         forEach(getAdoptedSheets(node), (sheet) => {
-            if (!overrides.has(sheet)) {
+            if (!overrides.has(sheet) && !isDarkReaderSheet(sheet)) {
                 iterator(sheet);
             }
             defineSheetScope(sheet, node);
@@ -96,7 +111,8 @@ export function createAdoptedStyleSheetOverride(node: Document | ShadowRoot): Ad
         if (count === 1) {
             // MS Copilot issue, where there is an empty `:root {}` style at the beginning.
             // Counting all the rules for all the shadow DOM elements can be expensive.
-            const rule = getAdoptedSheets(node)[0].cssRules[0];
+            const sourceSheet = getAdoptedSheets(node).find((s) => !overrides.has(s) && !isDarkReaderSheet(s));
+            const rule = sourceSheet?.cssRules[0];
             return rule instanceof CSSStyleRule ? rule.style.length : count;
         }
         return count;
@@ -111,7 +127,7 @@ export function createAdoptedStyleSheetOverride(node: Document | ShadowRoot): Ad
         const sheets = getAdoptedSheets(node);
         for (let i = sheets.length - 1; i >= 0; i--) {
             const sheet = sheets[i];
-            if (overrides.has(sheet)) {
+            if (overrides.has(sheet) || isDarkReaderSheet(sheet)) {
                 continue;
             }
 
@@ -161,7 +177,7 @@ export function createAdoptedStyleSheetOverride(node: Document | ShadowRoot): Ad
         callbackRequested = true;
         queueMicrotask(() => {
             callbackRequested = false;
-            const sheets = getAdoptedSheets(node).filter((s) => !overrides.has(s));
+            const sheets = getAdoptedSheets(node).filter((s) => !overrides.has(s) && !isDarkReaderSheet(s));
             sheets.forEach((sheet) => overridesBySource.delete(sheet));
             callback(sheets);
         });

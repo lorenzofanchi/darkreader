@@ -1,3 +1,4 @@
+import {setInlineStyleValue} from '@plus/dynamic/inject';
 import type {Theme} from '../../definitions';
 import {forEach, push} from '../../utils/array';
 import {isShadowDomSupported} from '../../utils/platform';
@@ -5,6 +6,7 @@ import {throttle} from '../../utils/throttle';
 import {getDuration} from '../../utils/time';
 import {getAbsoluteURL} from '../../utils/url';
 import {iterateShadowHosts, createOptimizedTreeObserver, isReadyStateComplete, addReadyStateCompleteListener, addDOMReadyListener, isDOMReady} from '../utils/dom';
+import {logWarn} from '../utils/log';
 
 import {iterateCSSDeclarations} from './css-rules';
 import {getImageDetails} from './image';
@@ -12,6 +14,7 @@ import {getModifiableCSSDeclaration} from './modify-css';
 import type {CSSVariableModifier, ModifiedVarDeclaration} from './variables';
 import {variablesStore} from './variables';
 
+declare const __PLUS__: boolean;
 
 interface Overrides {
     [cssProp: string]: {
@@ -280,6 +283,7 @@ export function stopWatchingForInlineStyles(): void {
     treeObservers.clear();
     attrObservers.clear();
     inlineStringValueCache.clear();
+    resetInlineStyleLoopDetection();
 }
 
 const inlineStyleCache = new WeakMap<HTMLElement, string>();
@@ -318,7 +322,9 @@ function getThemeKey(theme: Theme): string {
 }
 
 function getInlineStyleCacheKey(el: HTMLElement, theme: Theme): string {
-    const attrKey = INLINE_STYLE_ATTRS.map((attr) => `${attr}="${el.getAttribute(attr)}"`);
+    const attrKey = INLINE_STYLE_ATTRS
+        .filter((attr) => el.hasAttribute(attr))
+        .map((attr) => `${attr}="${el.getAttribute(attr)}"`);
     return `${attrKey} ${getThemeKey(theme)}`;
 }
 
@@ -331,11 +337,6 @@ function shouldIgnoreInlineStyle(element: HTMLElement, selectors: string[]): boo
     }
     return false;
 }
-
-const LOOP_DETECTION_THRESHOLD = 1000;
-const MAX_LOOP_CYCLES = 10;
-const elementsLastChanges = new WeakMap<Node, number>();
-const elementsLoopCycles = new WeakMap<Node, number>();
 
 const SMALL_SVG_THRESHOLD = 32;
 const svgNodesRoots = new WeakMap<Node, SVGSVGElement | null>();
@@ -362,17 +363,51 @@ function getSVGElementRoot(svgElement: SVGElement): SVGSVGElement | null {
 
 const inlineStringValueCache = new Map<string, Map<string, string>>();
 
-export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreInlineSelectors: string[], ignoreImageSelectors: string[]): void {
-    if (elementsLastChanges.has(element)) {
-        if (Date.now() - elementsLastChanges.get(element)! < LOOP_DETECTION_THRESHOLD) {
-            const cycles = elementsLoopCycles.get(element) ?? 0;
-            elementsLoopCycles.set(element, cycles + 1);
-        } else {
-            elementsLoopCycles.delete(element);
-        }
-        if ((elementsLoopCycles.get(element) ?? 0) >= MAX_LOOP_CYCLES) {
+const MAX_LOOP_TEARDOWNS = 10;
+const inlineStyleParents = new Map<HTMLElement, Node>();
+let parentTeardownCounts = new WeakMap<Node, number>();
+
+function trackInlineStyleTeardown(element: HTMLElement): void {
+    const parent = element.parentNode;
+    if (!parent) {
+        return;
+    }
+    if (inlineStyleParents.size === 0) {
+        queueMicrotask(checkForTeardown);
+    }
+    inlineStyleParents.set(element, parent);
+}
+
+function checkForTeardown() {
+    inlineStyleParents.forEach((parent, element) => {
+        if (element.isConnected || !parent.isConnected) {
             return;
         }
+        const count = (parentTeardownCounts.get(parent) ?? 0) + 1;
+        parentTeardownCounts.set(parent, count);
+        if (count === MAX_LOOP_TEARDOWNS) {
+            logWarn('Inline style change causes DOM teardown. Suspending changes for the container', parent);
+        }
+    });
+    inlineStyleParents.clear();
+}
+
+function parentHadTeardown(element: HTMLElement): boolean {
+    const parent = element.parentNode;
+    if (!parent) {
+        return true;
+    }
+    return (parentTeardownCounts.get(parent) ?? 0) >= MAX_LOOP_TEARDOWNS;
+}
+
+function resetInlineStyleLoopDetection() {
+    inlineStyleParents.clear();
+    parentTeardownCounts = new WeakMap();
+}
+
+export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreInlineSelectors: string[], ignoreImageSelectors: string[]): void {
+    if (parentHadTeardown(element)) {
+        return;
     }
 
     // ProseMirror editor rebuilds entire HTML after style changes
@@ -387,7 +422,7 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
 
     const unsetProps = new Set(Object.keys(overrides));
 
-    function setCustomProp(targetCSSProp: string, modifierCSSProp: string, cssVal: string) {
+    function overrideValue(sourceAttr: string, sourceCSSProp: string, modifierCSSProp: string, srcVal: string, cssVal: string) {
         const cachedStringValue = inlineStringValueCache.get(modifierCSSProp)?.get(cssVal);
         if (cachedStringValue) {
             setStaticValue(cachedStringValue);
@@ -408,11 +443,18 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
         }
 
         function setStaticValue(value: string) {
+            if (__PLUS__) {
+                setInlineStyleValue(element, sourceAttr, sourceCSSProp, modifierCSSProp, srcVal, value);
+                return;
+            }
+
+            const targetCSSProp = sourceAttr === 'style' ? sourceCSSProp : sourceAttr;
             const {customProp, dataAttr} = overrides[targetCSSProp] ?? shorthandOverrides[targetCSSProp];
             element.style.setProperty(customProp, value);
             if (!element.hasAttribute(dataAttr)) {
                 element.setAttribute(dataAttr, '');
             }
+            trackInlineStyleTeardown(element);
             unsetProps.delete(targetCSSProp);
         }
 
@@ -425,6 +467,10 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
                 });
                 declarations.forEach(({property, value}) => {
                     if (!(value instanceof Promise)) {
+                        if (__PLUS__) {
+                            setInlineStyleValue(element, sourceAttr, sourceCSSProp, property, srcVal, value);
+                            return;
+                        }
                         element.style.setProperty(property, value);
                     }
                 });
@@ -436,6 +482,7 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
         }
 
         function setAsyncValue(promise: Promise<string | null>, sourceValue: string) {
+            const targetCSSProp = sourceCSSProp;
             promise.then((value) => {
                 if (value && targetCSSProp === 'background' && value.startsWith('var(--darkreader-bg--')) {
                     setStaticValue(value);
@@ -506,11 +553,12 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
     }
 
     if (element.hasAttribute('bgcolor')) {
-        let value = element.getAttribute('bgcolor')!;
+        const attrValue = element.getAttribute('bgcolor')!;
+        let value = attrValue;
         if (value.match(/^[0-9a-f]{3}$/i) || value.match(/^[0-9a-f]{6}$/i)) {
             value = `#${value}`;
         }
-        setCustomProp('background-color', 'background-color', value);
+        overrideValue('bgcolor', '', 'background-color', attrValue, value);
     }
 
     if (
@@ -520,21 +568,22 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
     ) {
         const url = getAbsoluteURL(location.href, element.getAttribute('background') ?? '');
         const value = `url("${url}")`;
-        setCustomProp('background-image', 'background-image', value);
+        overrideValue('background', '', 'background-image', url, value);
     }
 
     // We can catch some link elements here, that are from `<link rel="mask-icon" color="#000000">`.
     // It's valid HTML code according to the specs, https://html.spec.whatwg.org/#attr-link-color
     // We don't want to touch such links, as it cause weird browser behavior (silent DOMException).
     if (element.hasAttribute('color') && (element as HTMLLinkElement).rel !== 'mask-icon') {
-        let value = element.getAttribute('color')!;
+        const attrValue = element.getAttribute('color')!;
+        let value = attrValue;
         if (value.match(/^[0-9a-f]{3}$/i) || value.match(/^[0-9a-f]{6}$/i)) {
             value = `#${value}`;
         } else if (value.match(/^#?[0-9a-f]{4}$/i)) {
             const hex = value.startsWith('#') ? value.substring(1) : value;
             value = `#${hex}00`;
         }
-        setCustomProp('color', 'color', value);
+        overrideValue('color', '', 'color', attrValue, value);
     }
 
     if (isSVGElement) {
@@ -566,7 +615,7 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
                             const {width, height} = element.getBoundingClientRect();
                             isBg = (width > SMALL_SVG_THRESHOLD || height > SMALL_SVG_THRESHOLD);
                         }
-                        setCustomProp('fill', isBg ? 'background-color' : 'color', value);
+                        overrideValue('fill', '', isBg ? 'background-color' : 'color', value, value);
                     };
 
                     if (isReadyStateComplete()) {
@@ -575,18 +624,20 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
                         addReadyStateCompleteListener(handleSVGElement);
                     }
                 } else {
-                    setCustomProp('fill', 'color', value);
+                    overrideValue('fill', '', 'color', value, value);
                 }
             }
         }
         if (element.hasAttribute('stop-color')) {
-            setCustomProp('stop-color', 'background-color', element.getAttribute('stop-color')!);
+            const value = element.getAttribute('stop-color')!;
+            overrideValue('stop-color', '', 'background-color', value, value);
         }
     }
 
     if (element.hasAttribute('stroke')) {
         const value = element.getAttribute('stroke')!;
-        setCustomProp('stroke', element instanceof SVGLineElement || element instanceof SVGTextElement ? 'border-color' : 'color', value);
+        const cssProp = element instanceof SVGLineElement || element instanceof SVGTextElement ? 'border-color' : 'color';
+        overrideValue('stroke', '', cssProp, value, value);
     }
 
     element.style && iterateCSSDeclarations(element.style, (property, value) => {
@@ -594,14 +645,14 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
         // issues and complexity of handling async requests.
         if (property === 'background-image' && value.includes('url')) {
             if (element === document.documentElement || element === document.body) {
-                setCustomProp(property, property, value);
+                overrideValue('style', property, property, value, value);
             }
             return;
         }
         if (overrides.hasOwnProperty(property) || (property.startsWith('--') && !normalizedPropList[property])) {
-            setCustomProp(property, property, value);
+            overrideValue('style', property, property, value, value);
         } else if (shorthandOverrides[property] && value.includes('var(')) {
-            setCustomProp(property, property, value);
+            overrideValue('style', property, property, value, value);
         } else {
             const overriddenProp = normalizedPropList[property];
             if (overriddenProp &&
@@ -615,7 +666,8 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
     });
 
     if (element.style && element instanceof SVGTextElement && element.style.fill) {
-        setCustomProp('fill', 'color', element.style.getPropertyValue('fill'));
+        const value = element.style.getPropertyValue('fill');
+        overrideValue('style', 'fill', 'color', value, value);
     }
 
     if (element.getAttribute('style')?.includes('--')) {
@@ -626,6 +678,4 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
         element.removeAttribute(overrides[cssProp].dataAttr);
     });
     inlineStyleCache.set(element, getInlineStyleCacheKey(element, theme));
-
-    elementsLastChanges.set(element, Date.now());
 }
