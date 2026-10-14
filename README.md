@@ -35,6 +35,17 @@ This will create a `build/release/darkreader-chrome.zip` file for use in a Chrom
 
 You can customize the build process by passing flags to build script. To see all flags, run `npm run build -- --help`.
 
+### Installing in Brave (macOS)
+
+Run `npm run brave`. It builds the Chromium MV3 release into `build/release/chrome-mv3`, copies that folder's path to the clipboard and opens `brave://extensions`.
+
+- First time: enable **Developer mode**, click **Load unpacked**, press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>G</kbd>, paste the path and select the folder.
+- After that: run `npm run brave` again and click the reload icon on the Dark Reader card.
+
+Settings are tied to the extension's folder, so loading it from a different folder starts from defaults. To carry them over, open the old copy's popup, go to **More → All settings → Advanced**, click **Export Settings**, then **Import Settings** in the same place in the new copy.
+
+To check which copy is running, open **Details** on its card in `brave://extensions`: your build says **Unpacked extension** and shows the folder it was loaded from, while the store version says **Chrome Web Store**. Only unpacked extensions have the reload icon on their card.
+
 ### Building with Deno
 
 You can build Dark Reader with an alternative runtime called [Deno](https://deno.land/). For this run `deno:bootstrap` script (e.g., via `npm run deno:bootstrap` or manually copy the command from `package.json`). Then run the same commands described above.
