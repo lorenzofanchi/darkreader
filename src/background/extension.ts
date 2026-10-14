@@ -272,7 +272,12 @@ export class Extension {
         if (UserStorage.settings.syncSitesFixes) {
             await ConfigManager.load({local: false});
         }
-        Extension.updateAutoState();
+        // Load the persisted state before computing a fresh one: loading it later (e.g. on
+        // the first tab connection) would overwrite the fresh automation state with the one
+        // saved before the restart, such as 'turn-on' from last night. Loaded only after the
+        // context menu check, which must not see `registeredContextMenus` from a past run.
+        await Extension.stateManager!.loadState();
+        Extension.handleAutomationCheck();
         Extension.runWakeDetector();
         Extension.onAppToggle();
         logInfo('loaded', UserStorage.settings);
