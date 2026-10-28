@@ -52,6 +52,13 @@ Run `npm run firefox`. It builds the Firefox release into `build/release/firefox
 
 Release versions of Firefox only install signed add-ons permanently, so a local build stays loaded until Firefox restarts. Until then it replaces the store version, which comes back after the restart.
 
+To install it permanently, sign it as an unlisted (never published) add-on on addons.mozilla.org:
+
+1. Generate API credentials at https://addons.mozilla.org/developers/addon/api/key/ and put the JWT issuer and JWT secret in `.env.amo` (gitignored) as `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`.
+2. Run `npm run firefox:sign`. It builds, gives the build its own add-on ID (`darkreader@lorenzofanchi`) and a version AMO has not seen before, uploads it for signing, and opens the signed `.xpi` in Firefox to install it. Review usually takes a few minutes.
+
+The signed add-on is separate from the store version, with its own settings: export them from the store version first (popup → **More → All settings → Advanced**), disable it, and import them in the new one. Run `npm run firefox:sign` again after each upstream pull; Firefox updates the add-on in place and keeps its settings.
+
 ### Building with Deno
 
 You can build Dark Reader with an alternative runtime called [Deno](https://deno.land/). For this run `deno:bootstrap` script (e.g., via `npm run deno:bootstrap` or manually copy the command from `package.json`). Then run the same commands described above.
