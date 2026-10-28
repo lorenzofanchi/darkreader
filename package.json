@@ -9,6 +9,7 @@
     "build:firefox": "node --max-old-space-size=3072 tasks/cli.js build --release --firefox",
     "build:plus": "node --max-old-space-size=3072 tasks/cli.js build --chrome-mv3 --plus --release",
     "brave": "npm run build -- --chrome-mv3 && printf %s \"$PWD/build/release/chrome-mv3\" | pbcopy && open -a \"Brave Browser\" brave://extensions",
+    "firefox": "npm run build -- --firefox && printf %s \"$PWD/build/release/firefox/manifest.json\" | pbcopy && open -a Firefox \"about:debugging#/runtime/this-firefox\"",
     "code-style": "npm run lint",
     "config-cleanup": "node --max-http-header-size=131072 tasks/ping.js dark-sites detector-hints dynamic-theme-fixes inversion-fixes",
     "debug": "node --max-old-space-size=3072 tasks/cli.js build --debug",

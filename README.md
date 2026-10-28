@@ -46,6 +46,12 @@ Settings are tied to the extension's folder, so loading it from a different fold
 
 To check which copy is running, open **Details** on its card in `brave://extensions`: your build says **Unpacked extension** and shows the folder it was loaded from, while the store version says **Chrome Web Store**. Only unpacked extensions have the reload icon on their card.
 
+### Installing in Firefox (macOS)
+
+Run `npm run firefox`. It builds the Firefox release into `build/release/firefox`, copies the path of its `manifest.json` to the clipboard and opens `about:debugging`. Click **Load Temporary Add-on…**, press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>G</kbd>, paste the path and open it.
+
+Release versions of Firefox only install signed add-ons permanently, so a local build stays loaded until Firefox restarts. Until then it replaces the store version, which comes back after the restart.
+
 ### Building with Deno
 
 You can build Dark Reader with an alternative runtime called [Deno](https://deno.land/). For this run `deno:bootstrap` script (e.g., via `npm run deno:bootstrap` or manually copy the command from `package.json`). Then run the same commands described above.
