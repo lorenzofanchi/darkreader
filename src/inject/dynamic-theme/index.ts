@@ -4,7 +4,7 @@ import {createTextStyle} from '../../generators/text-style';
 import {forEach, push, toArray} from '../../utils/array';
 import {clearColorCache, getSRGBLightness, parseColorWithCache} from '../../utils/color';
 import {clamp} from '../../utils/math';
-import {isChromium, isEdge, isFirefox, isMobile} from '../../utils/platform';
+import {isChromium, isEdge, isFirefox, isMobile, isLayerRuleSupported} from '../../utils/platform';
 import {throttle} from '../../utils/throttle';
 import {generateUID} from '../../utils/uid';
 import {parsedURLCache} from '../../utils/url';
@@ -21,7 +21,8 @@ import {changeMetaThemeColorWhenAvailable, restoreMetaThemeColor} from './meta-t
 import {modifyBackgroundColor, modifyBorderColor, modifyForegroundColor} from './modify-colors';
 import {getModifiedUserAgentStyle, getModifiedFallbackStyle, cleanModificationCache, getSelectionColor, setFilterSelectorHandler} from './modify-css';
 import {clearColorPalette, getColorPalette, registerVariablesSheet, releaseVariablesSheet} from './palette';
-import {filterSelectors, cleanFilterSelectors, addFilterSelector} from './selectors';
+import {mediaFilterSelectors, cleanFilterSelectors, addFilterSelector} from './selectors';
+import type {FilterSelectorsCollection} from './selectors';
 import type {StyleElement, StyleManager} from './style-manager';
 import {manageStyle, getManageableStyles, cleanLoadingLinks, setIgnoredCSSURLs} from './style-manager';
 import {injectProxy} from './stylesheet-proxy';
@@ -39,7 +40,7 @@ const INSTANCE_ID = generateUID();
 const styleManagers = new Map<StyleElement, StyleManager>();
 const adoptedStyleManagers: AdoptedStyleSheetManager[] = [];
 let theme: Theme | null = null;
-let fixes: DynamicThemeFix | null = null;
+let fixes: Partial<DynamicThemeFix> | null = null;
 let isIFrame: boolean | null = null;
 let ignoredImageAnalysisSelectors: string[] = [];
 let ignoredInlineSelectors: string[] = [];
@@ -161,8 +162,8 @@ const scheduleInversionStyleUpdate = throttle(() => {
     });
 });
 
-setFilterSelectorHandler((selector, type) => {
-    const changed = addFilterSelector(selector, type);
+setFilterSelectorHandler((selector, type, media) => {
+    const changed = addFilterSelector(selector, type, media);
     if (changed) {
         scheduleInversionStyleUpdate();
     }
@@ -175,22 +176,22 @@ function getInversionStyleValue(): string {
 
     const rules: string[] = [];
 
-    const appendRule = (selectors: string[], filter: string | null) => {
+    const appendRule = (target: string[], selectors: string[], filter: string | null) => {
         if (!filter || selectors.length === 0) {
             return;
         }
-        rules.push([
+        target.push([
             `${selectors.join(', ')} {`,
             `    filter: ${filter} !important;`,
             '}',
         ].join('\n'));
     };
 
-    const appendCounterInversion = (selectors: string[]) => {
+    const appendCounterInversion = (target: string[], selectors: string[]) => {
         if (theme!.mode === 0 || selectors.length === 0) {
             return;
         }
-        rules.push([
+        target.push([
             `${selectors.join(', ')} {`,
             `    color: black !important;`,
             '}',
@@ -200,11 +201,11 @@ function getInversionStyleValue(): string {
         ].join('\n'));
     };
 
-    const appendInversionCancellation = (selectors: string[]) => {
+    const appendInversionCancellation = (target: string[], selectors: string[]) => {
         if (theme!.mode === 0 || selectors.length === 0) {
             return;
         }
-        rules.push([
+        target.push([
             `${selectors.join(', ')} {`,
             `    filter: none !important;`,
             `    color: var(--darkreader-neutral-text) !important;`,
@@ -215,34 +216,62 @@ function getInversionStyleValue(): string {
         ].join('\n'));
     };
 
-    if ((fixes && Array.isArray(fixes.invert) && fixes.invert.length > 0) || filterSelectors.invert.size > 0) {
-        const extraInversionSelectors = [...filterSelectors.invert];
-        const invertSelectors = [...(fixes?.invert ?? []), ...extraInversionSelectors];
+    const buildGroupRules = (media: string): string[] => {
+        const group: string[] = [];
+        const configSelectors = media === '' && fixes && Array.isArray(fixes.invert) ? fixes.invert : [];
+        const filterSelectors = mediaFilterSelectors.get(media);
+
+        if (configSelectors.length > 0 || (filterSelectors && filterSelectors.invert.size > 0)) {
+            buildInversionRules(group, configSelectors, filterSelectors, theme!);
+        }
+        if (filterSelectors && filterSelectors.dim.size > 0) {
+            buildDimRules(group, filterSelectors, theme!);
+        }
+        return group;
+    };
+
+    const buildInversionRules = (group: string[], configSelectors: string[], filterSelectors: FilterSelectorsCollection | undefined, theme: Theme) => {
+        const extraInversionSelectors = filterSelectors ? [...filterSelectors.invert] : [];
+        const invertSelectors = [...configSelectors, ...extraInversionSelectors];
         const invertFilter = getCSSFilterValue({
             ...theme,
             contrast: theme.mode === 0 ? theme.contrast : clamp(theme.contrast - 10, 0, 100),
         });
-        appendRule(invertSelectors, invertFilter);
-        appendCounterInversion(extraInversionSelectors);
-        if (filterSelectors.none.size > 0) {
+        appendRule(group, invertSelectors, invertFilter);
+        appendCounterInversion(group, extraInversionSelectors);
+        if (filterSelectors && filterSelectors.none.size > 0) {
             const noneSelectors = [...filterSelectors.none];
-            appendInversionCancellation(noneSelectors);
-            if (theme.mode === 1) {
+            appendInversionCancellation(group, noneSelectors);
+            if (theme!.mode === 1) {
                 const invertedChildSelectors: string[] = [];
                 noneSelectors.forEach((parent) => {
                     extraInversionSelectors.forEach((child) => invertedChildSelectors.push(`${parent} > ${child}`));
                 });
-                appendRule(invertedChildSelectors, invertFilter);
+                appendRule(group, invertedChildSelectors, invertFilter);
             }
         }
-    }
-    if (filterSelectors.dim.size > 0) {
-        appendRule([...filterSelectors.dim], getCSSFilterValue({
+    };
+
+    const buildDimRules = (group: string[], filterSelectors: FilterSelectorsCollection, theme: Theme) => {
+        appendRule(group, [...filterSelectors.dim], getCSSFilterValue({
             ...theme,
             brightness: clamp(theme.brightness - 10, 5, 200),
             sepia: clamp(theme.sepia + 10, 0, 100),
         }));
-    }
+    };
+
+    const mediaKeys = new Set(['', ...mediaFilterSelectors.keys()]);
+    mediaKeys.forEach((media) => {
+        const group = buildGroupRules(media);
+        if (group.length === 0) {
+            return;
+        }
+        if (media) {
+            rules.push(`@media ${media} {\n${group.join('\n')}\n}`);
+        } else {
+            rules.push(...group);
+        }
+    });
 
     return rules.join('\n');
 }
@@ -250,6 +279,14 @@ function getInversionStyleValue(): string {
 function createStaticStyleOverrides() {
     if (!staticStyleInjector) {
         staticStyleInjector = createStaticStyleInjector();
+    }
+
+    if (isLayerRuleSupported) {
+        const layersStyle = createOrUpdateStyle('darkreader-layers', document);
+        layersStyle.textContent = '@layer darkreader';
+        if (document.head.firstChild !== layersStyle) {
+            document.head.insertBefore(layersStyle, document.head.firstChild);
+        }
     }
 
     staticStyleInjector.begin();
@@ -372,6 +409,16 @@ function cleanFallbackStyle() {
     }
 }
 
+function updateRootVars() {
+    if (__PLUS__) {
+        updateExtendedStaticStyle('root-vars', variablesStore.getRootVarsText(theme!));
+        return;
+    }
+
+    const rootVarsStyle = createOrUpdateStyle('darkreader--root-vars');
+    variablesStore.putRootVars(rootVarsStyle, theme!);
+}
+
 function createDynamicStyleOverrides() {
     const allStyles = getManageableStyles(document);
 
@@ -386,12 +433,8 @@ function createDynamicStyleOverrides() {
         });
 
     variablesStore.matchVariablesAndDependents();
-    variablesStore.setOnRootVariableChange(() => {
-        const rootVarsStyle = createOrUpdateStyle('darkreader--root-vars');
-        variablesStore.putRootVars(rootVarsStyle, theme!);
-    });
-    const rootVarsStyle = createOrUpdateStyle('darkreader--root-vars');
-    variablesStore.putRootVars(rootVarsStyle, theme!);
+    variablesStore.setOnRootVariableChange(() => updateRootVars());
+    updateRootVars();
 
     styleManagers.forEach((manager) => manager.render(theme!, ignoredImageAnalysisSelectors!));
     if (loadingStyles.size === 0) {
@@ -548,8 +591,7 @@ function watchForUpdates() {
             const styleAttr = element.getAttribute('style') || '';
             if (styleAttr.includes('--')) {
                 variablesStore.matchVariablesAndDependents();
-                const rootVarsStyle = createOrUpdateStyle('darkreader--root-vars');
-                variablesStore.putRootVars(rootVarsStyle, theme!);
+                updateRootVars();
             }
         }
     }, (root) => {
@@ -706,7 +748,12 @@ function tryInvertChromePDF() {
     }
 
     const root = chrome.dom.openOrClosedShadowRoot(document.body);
-    if (!root || !root.querySelector('link[href$="/pdf_embedder.css"]')) {
+    if (
+        !root || (
+            !root.querySelector('link[href$="/pdf_embedder.css"]') &&
+            !root.querySelector('iframe[type="application/pdf"]')
+        )
+    ) {
         return;
     }
 
@@ -748,14 +795,14 @@ export function createOrUpdateDynamicTheme(theme: Theme, dynamicThemeFixes: Dyna
 }
 
 let prevTheme: Theme | null = null;
-let prevFixes: DynamicThemeFix | null = null;
+let prevFixes: Partial<DynamicThemeFix> | null = null;
 
 /**
  * Note: This function should be directly used only in API builds, it is exported by this fle
  * only for use in src/api/enable() for backwards compatibility,
  * extension should use only createOrUpdateDynamicTheme()
  */
-export function createOrUpdateDynamicThemeInternal(themeConfig: Theme, dynamicThemeFixes: DynamicThemeFix | null, iframe: boolean): void {
+export function createOrUpdateDynamicThemeInternal(themeConfig: Theme, dynamicThemeFixes: Partial<DynamicThemeFix> | null, iframe: boolean): void {
     theme = themeConfig;
     fixes = dynamicThemeFixes;
 

@@ -204,6 +204,23 @@ describe('CSS VARIABLES OVERRIDE', () => {
         expect(getComputedStyle(container.querySelector('h1')!).backgroundColor).toBe('rgb(204, 0, 0)');
     });
 
+    it('should update background variable when it resolves later', async () => {
+        container.innerHTML = multiline(
+            '<style>',
+            '    h1 {',
+            '        background: var(--bg, white);',
+            '    }',
+            '</style>',
+            '<h1>Background with lately defined variable</h1>',
+        );
+        createOrUpdateDynamicTheme(theme, null, false);
+        const style = document.createElement('style');
+        style.textContent = ':root { --bg: red; }';
+        container.append(style);
+        await timeout(0);
+        expect(getComputedStyle(container.querySelector('h1')!).backgroundColor).toBe('rgb(204, 0, 0)');
+    });
+
     it('should handle multi-type vars with deep color refs', () => {
         container.innerHTML = multiline(
             '<style>',
@@ -1330,5 +1347,41 @@ describe('CSS VARIABLES OVERRIDE', () => {
 
         const elementStyle = getComputedStyle(container.querySelector('h1')!);
         expect(elementStyle.backgroundColor).toBe('rgb(204, 0, 0)');
+    });
+
+    it('should preserve empty custom property that overrides non-empty', () => {
+        container.innerHTML = multiline(
+            '<style>',
+            '    .non-empty { --grow: 1; }',
+            '    .empty { --grow: ; }',
+            '</style>',
+            '<div class="non-empty empty">Custom property with empty values</div>',
+        );
+        const el = container.querySelector('.empty') as HTMLElement;
+        expect(getComputedStyle(el).getPropertyValue('--grow')).toBe('');
+
+        createOrUpdateDynamicTheme(theme, null, false);
+        expect(getComputedStyle(el).getPropertyValue('--grow')).toBe('');
+    });
+
+    it('should not override variable inside nested @media', () => {
+        container.innerHTML = multiline(
+            '<style>',
+            '    :root { --size: 16px; }',
+            '    .nested-media {',
+            '        --margin: 8px;',
+            '        @media (min-width: 1px) {',
+            '            --margin: calc(2 * var(--size));',
+            '        }',
+            '    }',
+            '    span { display: block; margin-left: var(--margin); }',
+            '</style>',
+            '<div class="nested-media"><span>Nested media node with variables</span></div>',
+        );
+        const el = container.querySelector('span') as HTMLElement;
+        expect(getComputedStyle(el).marginLeft).toBe('32px');
+
+        createOrUpdateDynamicTheme(theme, null, false);
+        expect(getComputedStyle(el).marginLeft).toBe('32px');
     });
 });

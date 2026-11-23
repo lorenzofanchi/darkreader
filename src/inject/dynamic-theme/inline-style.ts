@@ -283,12 +283,15 @@ export function stopWatchingForInlineStyles(): void {
     treeObservers.clear();
     attrObservers.clear();
     inlineStringValueCache.clear();
+    inlineStyleCache = new WeakMap();
+    svgInversionCache = new WeakSet();
+    svgAnalysisConditionCache = new WeakMap();
     resetInlineStyleLoopDetection();
 }
 
-const inlineStyleCache = new WeakMap<HTMLElement, string>();
-const svgInversionCache = new WeakSet<SVGSVGElement>();
-const svgAnalysisConditionCache = new WeakMap<SVGSVGElement, boolean>();
+let inlineStyleCache = new WeakMap<HTMLElement, string>();
+let svgInversionCache = new WeakSet<SVGSVGElement>();
+let svgAnalysisConditionCache = new WeakMap<SVGSVGElement, boolean>();
 const themeProps: Array<keyof Theme> = ['brightness', 'contrast', 'grayscale', 'sepia', 'mode'];
 
 function shouldAnalyzeSVGAsImage(svg: SVGSVGElement) {
@@ -422,7 +425,11 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
 
     const unsetProps = new Set(Object.keys(overrides));
 
-    function overrideValue(sourceAttr: string, sourceCSSProp: string, modifierCSSProp: string, srcVal: string, cssVal: string) {
+    function overrideValue(sourceAttr: string, sourceCSSProp: string, targetCSSProp: string, modifierCSSProp: string, srcVal: string, cssVal: string) {
+        if (sourceAttr !== 'style' && cssVal.includes('var(')) {
+            variablesStore.addVarDependantForMatching(modifierCSSProp, cssVal);
+        }
+
         const cachedStringValue = inlineStringValueCache.get(modifierCSSProp)?.get(cssVal);
         if (cachedStringValue) {
             setStaticValue(cachedStringValue);
@@ -444,11 +451,10 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
 
         function setStaticValue(value: string) {
             if (__PLUS__) {
-                setInlineStyleValue(element, sourceAttr, sourceCSSProp, modifierCSSProp, srcVal, value);
+                setInlineStyleValue(element, sourceAttr, sourceCSSProp, targetCSSProp, srcVal, value);
                 return;
             }
 
-            const targetCSSProp = sourceAttr === 'style' ? sourceCSSProp : sourceAttr;
             const {customProp, dataAttr} = overrides[targetCSSProp] ?? shorthandOverrides[targetCSSProp];
             element.style.setProperty(customProp, value);
             if (!element.hasAttribute(dataAttr)) {
@@ -482,7 +488,6 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
         }
 
         function setAsyncValue(promise: Promise<string | null>, sourceValue: string) {
-            const targetCSSProp = sourceCSSProp;
             promise.then((value) => {
                 if (value && targetCSSProp === 'background' && value.startsWith('var(--darkreader-bg--')) {
                     setStaticValue(value);
@@ -558,7 +563,7 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
         if (value.match(/^[0-9a-f]{3}$/i) || value.match(/^[0-9a-f]{6}$/i)) {
             value = `#${value}`;
         }
-        overrideValue('bgcolor', '', 'background-color', attrValue, value);
+        overrideValue('bgcolor', '', 'background-color', 'background-color', attrValue, value);
     }
 
     if (
@@ -568,7 +573,7 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
     ) {
         const url = getAbsoluteURL(location.href, element.getAttribute('background') ?? '');
         const value = `url("${url}")`;
-        overrideValue('background', '', 'background-image', url, value);
+        overrideValue('background', '', 'background-image', 'background-image', url, value);
     }
 
     // We can catch some link elements here, that are from `<link rel="mask-icon" color="#000000">`.
@@ -583,7 +588,7 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
             const hex = value.startsWith('#') ? value.substring(1) : value;
             value = `#${hex}00`;
         }
-        overrideValue('color', '', 'color', attrValue, value);
+        overrideValue('color', '', 'color', 'color', attrValue, value);
     }
 
     if (isSVGElement) {
@@ -615,7 +620,7 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
                             const {width, height} = element.getBoundingClientRect();
                             isBg = (width > SMALL_SVG_THRESHOLD || height > SMALL_SVG_THRESHOLD);
                         }
-                        overrideValue('fill', '', isBg ? 'background-color' : 'color', value, value);
+                        overrideValue('fill', '', 'fill', isBg ? 'background-color' : 'color', value, value);
                     };
 
                     if (isReadyStateComplete()) {
@@ -624,20 +629,20 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
                         addReadyStateCompleteListener(handleSVGElement);
                     }
                 } else {
-                    overrideValue('fill', '', 'color', value, value);
+                    overrideValue('fill', '', 'fill', 'color', value, value);
                 }
             }
         }
         if (element.hasAttribute('stop-color')) {
             const value = element.getAttribute('stop-color')!;
-            overrideValue('stop-color', '', 'background-color', value, value);
+            overrideValue('stop-color', '', 'stop-color', 'background-color', value, value);
         }
     }
 
     if (element.hasAttribute('stroke')) {
         const value = element.getAttribute('stroke')!;
         const cssProp = element instanceof SVGLineElement || element instanceof SVGTextElement ? 'border-color' : 'color';
-        overrideValue('stroke', '', cssProp, value, value);
+        overrideValue('stroke', '', 'stroke', cssProp, value, value);
     }
 
     element.style && iterateCSSDeclarations(element.style, (property, value) => {
@@ -645,14 +650,14 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
         // issues and complexity of handling async requests.
         if (property === 'background-image' && value.includes('url')) {
             if (element === document.documentElement || element === document.body) {
-                overrideValue('style', property, property, value, value);
+                overrideValue('style', property, property, property, value, value);
             }
             return;
         }
         if (overrides.hasOwnProperty(property) || (property.startsWith('--') && !normalizedPropList[property])) {
-            overrideValue('style', property, property, value, value);
+            overrideValue('style', property, property, property, value, value);
         } else if (shorthandOverrides[property] && value.includes('var(')) {
-            overrideValue('style', property, property, value, value);
+            overrideValue('style', property, property, property, value, value);
         } else {
             const overriddenProp = normalizedPropList[property];
             if (overriddenProp &&
@@ -667,7 +672,7 @@ export function overrideInlineStyle(element: HTMLElement, theme: Theme, ignoreIn
 
     if (element.style && element instanceof SVGTextElement && element.style.fill) {
         const value = element.style.getPropertyValue('fill');
-        overrideValue('style', 'fill', 'color', value, value);
+        overrideValue('style', 'fill', 'fill', 'color', value, value);
     }
 
     if (element.getAttribute('style')?.includes('--')) {

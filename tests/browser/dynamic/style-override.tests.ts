@@ -293,4 +293,68 @@ describe('Style override', () => {
             [['custom-element', 'p'], 'color', 'rgb(255, 160, 177)'],
         ]);
     });
+
+    it('should not override variable set inside nested @media', async () => {
+        await loadTestPage({
+            '/': multiline(
+                '<!DOCTYPE html>',
+                '<html>',
+                '<head>',
+                '    <style>',
+                '        :root { --size: 16px; }',
+                '        .nested {',
+                '            --width: 64px;',
+                '            margin-left: var(--width);',
+                '            @media (min-width: 1px) {',
+                '                --width: calc(2 * var(--size));',
+                '            }',
+                '        }',
+                '    </style>',
+                '</head>',
+                '<body>',
+                '    <div class="nested">Nested</div>',
+                '</body>',
+                '</html>',
+            ),
+        });
+
+        await expectStyles([
+            ['.nested', 'margin-left', '32px'],
+        ]);
+    });
+
+    it('should keep style proxy after theme rebuild', async () => {
+        if (product === 'firefox') {
+            return;
+        }
+        await loadTestPage({
+            '/': multiline(
+                '<!DOCTYPE html>',
+                '<html>',
+                '<head>',
+                '    <style class="testcase-style"></style>',
+                '</head>',
+                '<body>',
+                '    <div class="target">Proxy</div>',
+                '</body>',
+                '</html>',
+            ),
+        });
+
+        await pageUtils.evaluateScript(() => {
+            document.dispatchEvent(new CustomEvent('__darkreader__cleanUp'));
+            document.dispatchEvent(new CustomEvent('__darkreader__stylesheetProxy__arg', {
+                detail: {enableStyleSheetsProxy: true, enableCustomElementRegistryProxy: true},
+            }));
+        });
+
+        await pageUtils.evaluateScript(() => {
+            const style = document.querySelector('.testcase-style') as HTMLStyleElement;
+            style.sheet!.insertRule('.target { background-color: white; }');
+        });
+
+        await expectStyles([
+            ['.target', 'background-color', 'rgb(24, 26, 27)'],
+        ]);
+    });
 });
